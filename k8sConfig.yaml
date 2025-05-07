@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cv-backend
+  namespace: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cv-backend
+  template:
+    metadata:
+      labels:
+        app: cv-backend
+    spec:
+      containers:
+      - name: cv-backend
+        image: cv-backend
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cv-backend
+  namespace: web
+spec:
+  selector:
+    app: cv-backend
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+    nodePort: 30086 # A port in the range 30000-32767
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cv-front
+  namespace: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cv-front
+  template:
+    metadata:
+      labels:
+        app: cv-front
+    spec:
+      containers:
+      - name: cv-front
+        image: cv-front:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 5173 
+        env:
+        - name: VITE_APP_BACKEND_URL
+          value: "http://192.168.49.2:30086"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cv-front
+  namespace: web
+spec:
+  selector:
+    app: cv-front
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 5173 
+    nodePort: 30085
+  type: NodePort 
