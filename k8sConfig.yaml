@@ -32,8 +32,8 @@ spec:
   - protocol: TCP
     port: 80
     targetPort: 8080
-    nodePort: 30086 # A port in the range 30000-32767
-  type: NodePort
+    nodePort: 30086 
+  type: NodePort    
 ---
 apiVersion: apps/v1
 kind: Deployment
