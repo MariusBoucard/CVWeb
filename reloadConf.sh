@@ -22,6 +22,7 @@ kubectl create namespace web
 # Apply Kubernetes configuration
 echo "Applying Kubernetes configuration..."
 kubectl apply -f k8sConfig.yaml
+kubectl apply -f nginx.yaml
 
 # Wait for pods to be ready
 echo "Waiting for pods to be ready..."
@@ -32,5 +33,7 @@ kill $! # Stop watching after 10 seconds
 echo "Fetching Minikube IP and service details..."
 minikube ip
 kubectl get service cv-front
+
+# WE SHOULD RESTART THE NGINX AS WELL AND THEN REDIRECT WITH OUR LOCAL NGINX TO IT !
 
 echo "Reload complete!"

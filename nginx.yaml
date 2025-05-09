@@ -1,0 +1,99 @@
+# Nginx Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 443 # HTTPS port
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d # Mount Nginx configuration
+        - name: ssl-certificates
+          mountPath: /etc/ssl/certs # Mount SSL certificates
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-config # Reference to the ConfigMap
+      - name: ssl-certificates
+        secret:
+          secretName: ssl-certificates # Reference to the Secret containing SSL certificates
+
+---
+
+# Nginx Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: web
+spec:
+  selector:
+    app: nginx
+  ports:
+  - protocol: TCP
+    port: 443 # Expose HTTPS port
+    targetPort: 443
+    nodePort: 30087 # NodePort for external access
+  type: NodePort # Use LoadBalancer for external access
+
+---
+
+# Nginx ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: web
+data:
+  default.conf: |
+    log_format custom_format '$remote_addr - $remote_user [$time_local] '
+                             '"$request" $status $body_bytes_sent '
+                             '"$http_referer" "$http_user_agent" '
+                             '"$upstream_addr" "$upstream_status" "$upstream_response_time"';
+
+    access_log /var/log/nginx/access.log custom_format;
+
+    server {
+        listen 443 ssl;
+        server_name cv-marius-boucard-bocciarelli.duckdns.org;
+
+        ssl_certificate /etc/ssl/certs/tls.crt;
+        ssl_certificate_key /etc/ssl/certs/tls.key;
+
+        # Backend API traffic
+        location /api/ {
+            proxy_pass http://cv-backend.web.svc.cluster.local:80;
+        }
+
+        # Frontend traffic
+        location / {
+            proxy_pass http://cv-front.web.svc.cluster.local:80/;
+        }
+    }
+
+---
+
+# SSL Certificates Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ssl-certificates
+  namespace: web
+type: kubernetes.io/tls
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURTVENDQWpHZ0F3SUJBZ0lVWW9DNTBLVjBkcHlMelkwVENxWW45RE1BM1BNd0RRWUpLb1pJaHZjTkFRRUwKQlFBd05ERXlNREFHQTFVRUF3d3BZM1l0YldGeWFYVnpMV0p2ZFdOaGNtUXRZbTlqWTJsaGNtVnNiR2t1WkhWagphMlJ1Y3k1dmNtY3dIaGNOTWpVd05UQTRNVE0xT1RNd1doY05Nall3TlRBNE1UTTFPVE13V2pBME1USXdNQVlEClZRUUREQ2xqZGkxdFlYSnBkWE10WW05MVkyRnlaQzFpYjJOamFXRnlaV3hzYVM1a2RXTnJaRzV6TG05eVp6Q0MKQVNJd0RRWUpLb1pJaHZjTkFRRUJCUUFEZ2dFUEFEQ0NBUW9DZ2dFQkFLR1dBYWFZa3ZSVEErNlVLSW1WVm8yLwp1VHNERFRBb0ZMM3NhSnU1Qmg3SEw2UWpYMUVYcC9KUnNiNS9MczdmRjg2WXlaY0VkMEtEMEVGaXB2akVKcWphCnE4M2pPNk9BdXBpY05TTWcveHVYYlYwVGxqdldxcXd5VmpkWWIwR1hDZTBsK2VsVVFmd2MvWDBRbW1VQ1BRZkwKWUU0K0k5UktZZm1LZWdqdkdtckhRdEFyMHF0YkdkUFN0UlZrZ1dQTVpIVXZLVktpM25kSmIrT3FpTUt0TVZjdQoyZCtLU0ZEdzJjYkJsa2JUTXlqeUVHZEdwZXp0Q1J2NTFQeXVkRTh3OEk5Mm93TXNOQStIQWNaTkhzSlF5RTUxCkQrVXN0TTgwbU5ySGt3RDB6dXhKSmNkVC9jNzcwczlwYSs2bFJlTTJsbFUwam5NU3JxTEE2QVRQWXNRa3d6MEMKQXdFQUFhTlRNRkV3SFFZRFZSME9CQllFRkJWSzBPaGowVVpzUDhVNXpFNk5KN1I2SVRiUU1COEdBMVVkSXdRWQpNQmFBRkJWSzBPaGowVVpzUDhVNXpFNk5KN1I2SVRiUU1BOEdBMVVkRXdFQi93UUZNQU1CQWY4d0RRWUpLb1pJCmh2Y05BUUVMQlFBRGdnRUJBQWszRnBHUzRSa2dOYU9mUlRMeE9VWVpMdGNOL0ZRdFJCN2lFdXhNTXlqQ3RtQ0kKQUc4RDl4SDZMTWlmRE15YnpLV3dPdWxsRmV3SVFrQWpMMHFzbUp3bUpNSU5OeUpFWldVZTljaXQ3OXFTT2dCMgp3N3dMRUJGYlFCWitlNC9rWjd4NHh2MHJMM2RRZ2ZlY3dYNkRHZkl4MTNqT084Vy9NMUd2T1hQeWszM0NXNndqCmMxZm1sQ0pzYTRIVC9hMktjT041bjQrMXVyeWVqbFE2RllVTUY1UWhsOHgzVHBqWFlibXd3RmZCbm1qWVAzUmoKa1E2Vy9SQVVScXN1MFU1cVIwMndZcTRCTFRGaGlXdmo3UlpmQWFkMldHa0NIb3ViNlVnRzY3T25HZzJYNVQzVgpFNC83ZWU5elhwWGZKcE5YWVB3ZDNmVFhSMjkrd3R0OGJLRno0eTA9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2QUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktZd2dnU2lBZ0VBQW9JQkFRQ2hsZ0dtbUpMMFV3UHUKbENpSmxWYU52N2s3QXcwd0tCUzk3R2lidVFZZXh5K2tJMTlSRjZmeVViRytmeTdPM3hmT21NbVhCSGRDZzlCQgpZcWI0eENhbzJxdk40enVqZ0xxWW5EVWpJUDhibDIxZEU1WTcxcXFzTWxZM1dHOUJsd250SmZucFZFSDhIUDE5CkVKcGxBajBIeTJCT1BpUFVTbUg1aW5vSTd4cHF4MExRSzlLcld4blQwclVWWklGanpHUjFMeWxTb3Q1M1NXL2oKcW9qQ3JURlhMdG5maWtoUThObkd3WlpHMHpNbzhoQm5ScVhzN1FrYitkVDhyblJQTVBDUGRxTURMRFFQaHdIRwpUUjdDVU1oT2RRL2xMTFRQTkpqYXg1TUE5TTdzU1NYSFUvM08rOUxQYVd2dXBVWGpOcFpWTkk1ekVxNml3T2dFCnoyTEVKTU05QWdNQkFBRUNnZ0VBQVZBc3hwQlplYnpCUExyZG1kSUljVzc4MXRIWkxsOUZCRHRXVUFvdzBPUHAKM1dEQmJvSDZHWnc0TGx3OEtERmV2RDlaelJuZWlicTNTcVdjeGZKWnpGZHFtcmZyV0Q3L1VGak0vY0JhL0NMYQpwYzY4eE40bzl0YUNQRmV4ZU5HdkVkWm5zWitTK3NBOUNwK1hUNHBSQjUwdnhZWjlxNGU5ZSt3MVR4TzJqVDlxCkFXRHk3NVk5YWZnNXFOZHF1SDVoaU9pYU4rYmppb0hUdFozZFBLSGVPUUJJMURiMlg1UjZSaHp0ZTByYm0xdmwKNVdkeHk2bFEraXJFUGJrT3Y4RFR2L0I5QTIzdGl2YTNBdmM2WlNTS3RkdmdvQjZkWnZFWVN5QjNEaStNdjRUdwpZQ2dCMHdxM1BZb1E5WHo2SStteXVMMXhqMGduMXQxd2pqWVMrT1BDYVFLQmdRRFZ4eWpMV25zU01YQ1ZNZ0JLCkFiRVRYcmxJbVdQWTBBV0YvMGVPeHNlbkdwNEpVV2Z6T2RoUUVrYVFXMVlSaTJSd3JzRjQ1RTB0K1piK1lUSm4KZWNWTlFnakN2UDdPSi8zZzRkbFE4ZlJ5cytrTUFhWExPNGovV1F3enBVQW9kSWRkMExzbVhScmNTallTbE9UQQpsMFFSTGs0Z0l4VkxyOGc0c0tuTlBuYmlLd0tCZ1FEQmYvYk1ZSHdvZUFJc0ZOeXNkRzFaTkFjZXpJWjM0Ujg4CjlROGtRSFJIc3BxMzZBM0hXYStJZ0drVUc3bXQ1MW9jKy9ZZDlRZjBpelZBY3p6Zzd6UUpsYlNPQkh0Qm5XN1oKeUtzU3BBWk9MaTRlSTFhZUE1SGk5Z1VPQU0wY25OQXE2VDlTOHZvOVBlVkpHTityaDdXbklXTWhta1hJRUgzVgpKNVVSOGZTRU53S0JnREVHNmM0cFJBeGFGazNCRjl2aEkzRWp5aTVpTDBucit6aE40V1ZYSlRhbm5oTFkvcFFECmNoNTY4bi9zMG9KWGk0TmtNSzYrL1F4TUwxckxnN25EYllKWVlKWDRyaDh0Z01Yd1JkeVFnTlZGZVc3dGVjNXcKS3UwVXlQMlhLbTJjdStiQ0ZnbW9WSjZzemxYWW05V25XMDd0WmJGdEdsY3ZTeVhsTGl3SjVVM2RBb0dBRTBuegpTenBQQmlXNGFiYUdyUFpLTkRzNGZueDY1eFpjNjlHdCtib25IVUtUbzhPUkpBOHZyVmJIb3NhRXd1NHVFSGVaCmVERUY0djNCaURRMG5HT2I5MXlpREFvc1UwVWpXTGhsUFUxMmgzS1pERTRQZzE3dHV3YzFSOGtTcVVpRWc5S08KaW5GSU9yU2gxNkNRSTJRNjJuYzhqNHYyYXRRaUJ3NlVFSjdpOWc4Q2dZQUJlMEhmbmVFSXF0L3gzWDZodmllYwpOTm56NnJpZ2RhQWt0VGVlV2R4SHJBSmJmbHNEdVNFcXFJNldROVJzK1NYN3VUbDNHRDVudzRiMWg3ZE1yamQ2CkIydU9EdVMySzI5bTFKYllkUkVSWG1yTlJ6K2RjSXJEVkl3clpKNEFRTzFQb2pFUittOFA0Y1REditHUG5rcDYKbC9tQVd0ZlY2N2NLTlR2L094YmZFZz09Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K
